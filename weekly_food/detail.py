@@ -135,3 +135,36 @@ def build_selected_posts(report, selected, credentials=None, sources=None, write
             result["warnings"].append(f"{name}: {exc}")
             result["detail_status"].append({"topic": name, "source": "images", "state": "error", "message": str(exc)})
     return result
+
+
+def add_place_roundup(report):
+    """Combine researched places without implying a shared broadcast or ranking."""
+    from .pipeline import source_footer
+
+    places = [d for d in report['drafts'] if (d.get('guide') or {}).get('type') == 'restaurant']
+    if len(places) < 2:
+        return report
+    title = f"이번 주 눈여겨볼 맛집 {len(places)}곳, 대표 메뉴·위치·방문 정보 정리"
+    lines = [title, '', f"{report['window']['label']} 공개 자료에서 찾은 곳들을 모았어요.",
+             '방문할 곳을 고르기 쉽도록 확인된 메뉴와 위치, 이용 정보를 정리했어요.', '',
+             '## 맛집 한눈에 비교', '', '| 장소 | 대표 메뉴 | 위치 |', '| --- | --- | --- |']
+
+    def cell(draft, key):
+        rows = draft['guide']['fields'].get(key, [])
+        return ' / '.join(r['text'].replace('|', '·').replace('\n', ' ') + f" [{r['source_id']}]" for r in rows) or '확인 필요'
+
+    ids = set()
+    for draft in places:
+        ids.update(draft['source_ids'])
+        lines.append(f"| {draft['topic'].replace('|', '·')} | {cell(draft, 'menu')} | {cell(draft, 'directions')} |")
+    for i, draft in enumerate(places, 1):
+        lines += ['', f"## {i}. {draft['topic']}", '']
+        for key in ('buzz', 'overview', 'menu', 'directions', 'hours', 'reservation', 'parking', 'tips'):
+            if draft['guide']['fields'].get(key):
+                lines += [cell(draft, key), '']
+    lines += ['## 방문 전 체크', '', '가격·영업시간·예약 조건은 바뀔 수 있어요. 각 매장의 최신 안내를 확인해 주세요.', '',
+              source_footer([Evidence(**s) for s in report['sources'] if s['id'] in ids])]
+    report['drafts'].append({'topic': '이번 주 맛집 모아보기', 'title': title, 'mode': '맛집 비교 블로그 초안',
+                             'category': '맛집', 'guide': None, 'source_ids': sorted(ids),
+                             'text': '\n'.join(lines), 'review': ['동일 지점 여부와 최신 운영 정보 확인']})
+    return report

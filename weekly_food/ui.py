@@ -9,7 +9,7 @@ import streamlit as st
 from weekly_food.ai import Writer
 from weekly_food.core import DEFAULT_QUERIES, KST, Window
 from weekly_food.pipeline import draft_text, research, zip_bytes
-from weekly_food.detail import build_selected_posts
+from weekly_food.detail import build_selected_posts, add_place_roundup
 from weekly_food.guides import GUIDE_TYPES
 
 
@@ -26,6 +26,7 @@ def setting(name, default=""):
 def render_weekly_food():
     st.subheader("🍽️ 주간 푸드 트렌드 원고 작성기")
     st.write("① 주간 화제 찾기 → ② 주제 여러 개 선택 → ③ 추가 조사·원고·이미지 만들기")
+    st.caption("자동 작성은 확인된 맛집 후보를 추가 조사해 개별 소개와 비교 글을 만듭니다. AI를 선택하면 메뉴·공간 특징을 자연스러운 문장으로 정리합니다. 자동 작성에는 이미지를 포함하지 않으며, 아래에서 추가할 수 있습니다.")
     st.caption("SNS 반응은 공개 뉴스·블로그에 언급된 범위로 수집합니다. 인스타그램·틱톡 내부 게시물 전체를 직접 수집하지 않습니다.")
 
     with st.expander("트렌드 수집 설정", expanded=True):
@@ -70,6 +71,8 @@ def render_weekly_food():
         top = st.number_input("기본 선택 주제 수", min_value=1, max_value=10, value=3, key="weekly_top")
         demo = st.checkbox("가상 자료로 기능 시연", key="weekly_demo")
 
+    auto_places = st.checkbox("맛집 자동 작성: 수집 후 상위 맛집 추가 조사·개별 글·비교 글까지 만들기", value=True, key="weekly_auto_places")
+
     if st.button("1. 이번 주 핫한 주제 찾기", type="primary", key="weekly_run"):
         st.session_state.pop("weekly_report", None)
         st.session_state.pop("weekly_posts", None)
@@ -88,6 +91,23 @@ def render_weekly_food():
                     writer=writer, demo=demo, progress=current.write,
                 )
                 st.session_state.weekly_report = copy.deepcopy(report)
+                if auto_places:
+                    if writer is None and not demo:
+                        st.info("자연스러운 자동 원고에는 Gemini 또는 Groq를 선택하세요. AI 없이 실행하면 확인된 항목별 원문만 정리합니다.")
+                    indices = [i for i, t in enumerate(report["topics"]) if t["category"] == "맛집"][:int(top)]
+                    if indices:
+                        generated = build_selected_posts(
+                            report, indices,
+                            credentials={"NAVER_CLIENT_ID": naver_id.strip(), "NAVER_CLIENT_SECRET": naver_secret.strip(),
+                                         "YOUTUBE_API_KEY": youtube_key.strip(), "NAVER_API_MODE": naver_modes[naver_mode]},
+                            sources=[source_options[s] for s in selected], writer=writer,
+                            limit=int(limit), image_mode="none", progress=current.write,
+                            topic_options={i: {"guide_type": "restaurant"} for i in indices},
+                        )
+                        st.session_state.weekly_posts = add_place_roundup(generated)
+                    else:
+                        report["warnings"].append("기준을 충족한 맛집 후보가 없습니다. 지역·방송명·맛집 검색어를 추가해 주세요.")
+                        st.session_state.weekly_report = copy.deepcopy(report)
                 current.empty()
                 status.update(label="조사 결과 저장됨" if report["topics"] else "결과 부족 · 수집 상태를 확인하세요", state="complete")
         except ValueError as exc:
@@ -172,7 +192,7 @@ def render_weekly_food():
                         detail_days=int(detail_days), limit=int(limit), image_mode=modes[image_mode], image_count=int(image_count),
                         image_key=image_key, image_model=image_model, topic_options=topic_options, progress=current.write,
                     )
-                    st.session_state.weekly_posts = generated
+                    st.session_state.weekly_posts = add_place_roundup(generated)
                     posts = generated
                     draft_metric.metric("생성 원고", len(posts["drafts"]))
                     current.empty()

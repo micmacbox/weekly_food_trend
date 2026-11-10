@@ -63,3 +63,19 @@ class GuideTests(unittest.TestCase):
         guide = make_guide(topic, [])
         self.assertFalse(guide['complete'])
         self.assertTrue(guide['missing'])
+
+
+class PlaceBlogTests(unittest.TestCase):
+    def test_roundup_keeps_each_places_evidence_and_missing_values(self):
+        from weekly_food.detail import add_place_roundup
+        a = Evidence('가게 소개', 'https://example.com/a', datetime.now(KST).isoformat(), 'blog', '작성자', 'author', summary='대표 메뉴는 들깨면입니다.')
+        guide = validate_guide({'facts': [{'field': 'menu', 'text': a.summary, 'quote': a.summary, 'source_id': a.id}]}, [a], 'restaurant')
+        drafts = [{'topic': name, 'guide': guide, 'source_ids': [a.id]} for name in ['가게A', '가게B']]
+        report = {'drafts': drafts, 'sources': [a.to_dict()], 'window': {'label': '테스트 기간'}}
+        add_place_roundup(report)
+        text = report['drafts'][-1]['text']
+        self.assertIn('가게A', text)
+        self.assertIn('가게B', text)
+        self.assertIn('확인 필요', text)
+        self.assertIn(a.id, text)
+        self.assertNotIn('1위', text)

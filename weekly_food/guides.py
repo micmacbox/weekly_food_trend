@@ -13,7 +13,7 @@ FIELDS = {
         "tips": "실패를 줄이는 포인트", "storage": "보관·다시 데우기",
     },
     "restaurant": {
-        "overview": "어떤 곳인가요?", "identity": "매장·지점 확인", "menu": "대표 메뉴와 가격",
+        "buzz": "요즘 눈여겨볼 이유", "overview": "어떤 곳인가요?", "identity": "매장·지점 확인", "menu": "대표 메뉴와 가격",
         "directions": "주소·가는 길", "hours": "영업시간·휴무·브레이크타임",
         "reservation": "예약·웨이팅 꿀팁", "parking": "주차 위치·요금·지원 조건", "tips": "방문 전 체크",
     },
@@ -31,7 +31,7 @@ def resolve_type(category, requested=None):
 def detail_queries(term, mode):
     suffixes = (["", "레시피 재료 계량", "만들기 발효 굽기 온도 시간", "실패 원인 보관"]
                 if mode == "recipe" else
-                ["", "공식 지점 주소 가는길", "영업시간 휴무 브레이크타임", "예약 오픈 시간 웨이팅", "주차 요금 지원"])
+                ["", "방송 소개 대표 메뉴 특징", "공식 지점 주소 가는길", "영업시간 휴무 브레이크타임", "예약 오픈 시간 웨이팅", "주차 요금 지원"])
     return [(term + " " + suffix).strip() for suffix in suffixes]
 
 
@@ -106,6 +106,9 @@ def make_guide(topic, sources, writer=None):
             "네이버 블로그 실용 가이드를 작성합니다. 뉴스 제목을 나열하지 마세요. "
             "제공된 summary 원문에 명시된 사실만 필드별로 정리하세요. "
             "직접 방문·제작한 경험을 만들지 말고 친근한 ~요체와 짧은 모바일 문단을 사용하세요. "
+            "식당은 독자가 방문할 곳을 고르는 블로그 글입니다. buzz에는 자료에 명시된 방송·최근 소식, "
+            "overview에는 공간과 음식의 특징, menu에는 대표 메뉴와 확인된 가격을 설명하세요. "
+            "방송명·회차·순위·출연자 반응은 summary에서 확인될 때만 쓰세요. 인기나 맛을 보장하지 마세요. "
             "한 항목에 한 사실을 쓰고, 근거 문구 quote를 summary에서 연속된 문자열 그대로 발췌하세요. "
             "가격·주소·영업시간·예약·주차는 동일 매장·지점인지 자료로 확인할 수 있을 때만 적으세요. "
             "만들기 유형은 base_source_id의 분량·계량·순서·온도·시간을 하나의 기준으로 유지하세요. "
@@ -120,6 +123,8 @@ def make_guide(topic, sources, writer=None):
 
 
 def render_guide(name, guide):
+    if guide["type"] == "restaurant":
+        return render_place_post(name, guide)
     recipe = guide["type"] == "recipe"
     title = f"{name} 만들기, 재료부터 과정·실패 방지 팁까지" if recipe else f"{name} 방문 가이드, 가는 길·영업시간·예약·주차 정리"
     lines = [title, "", "공개 자료를 바탕으로 정리한 정보성 글이에요. 직접 만들거나 방문한 후기는 아니에요.", ""]
@@ -137,4 +142,30 @@ def render_guide(name, guide):
             lines.extend([prefix + row["text"] + f" [{row['source_id']}]", ""])
     if guide["missing"]:
         lines += ["## 아직 확인할 정보", "", " · ".join(guide["missing"]), ""]
+    return title, "\n".join(lines)
+
+
+def render_place_post(name, guide):
+    """Build a reader-facing post from evidence-checked facts only."""
+    fields = guide["fields"]
+    title = f"{name}, 대표 메뉴부터 위치·방문 팁까지"
+    lines = [title, ""]
+    for key in ("buzz", "overview"):
+        for row in fields.get(key, []):
+            lines += [row["text"] + f" [{row['source_id']}]", ""]
+    lines += ["## 한눈에 보는 방문 정보", "", "| 항목 | 확인된 정보 |", "| --- | --- |"]
+    for key in ("identity", "menu", "directions", "hours", "reservation", "parking"):
+        rows = fields.get(key, [])
+        if rows:
+            value = " / ".join(r["text"].replace("|", "·").replace("\n", " ") + f" [{r['source_id']}]" for r in rows)
+            lines.append(f"| {FIELDS['restaurant'][key]} | {value} |")
+    lines.append("")
+    for key in ("menu", "directions", "hours", "reservation", "parking", "tips"):
+        if fields.get(key):
+            lines += ["## " + FIELDS["restaurant"][key], ""]
+            for row in fields[key]:
+                lines += [row["text"] + f" [{row['source_id']}]", ""]
+    if guide["missing"]:
+        lines += ["## 방문 전 확인할 정보", "", "[확인 필요] " + " · ".join(guide["missing"]), ""]
+    lines += ["공개 자료를 바탕으로 정리했어요. 운영 정보는 방문 전 매장 안내를 확인해 주세요."]
     return title, "\n".join(lines)
