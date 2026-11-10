@@ -124,7 +124,7 @@ def naver_search(http: Http, query: str, window: Window, kind: str,
                 url = item.get("originallink") or item["link"]
                 publisher = urlsplit(url).hostname or "뉴스"
                 publisher_id = publisher
-            if window.contains(published):
+            if window is None or window.contains(published):
                 result.append(Evidence(
                     title=item["title"], url=url, published_at=published.isoformat(),
                     kind=kind, publisher=publisher, publisher_id=publisher_id,

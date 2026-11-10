@@ -26,7 +26,7 @@ def setting(name, default=""):
 def render_weekly_food():
     st.subheader("🍽️ 주간 푸드 트렌드 원고 작성기")
     st.write("① 주간 화제 찾기 → ② 주제 여러 개 선택 → ③ 추가 조사·원고·이미지 만들기")
-    st.caption("자동 작성은 확인된 맛집 후보를 추가 조사해 개별 소개와 비교 글을 만듭니다. AI를 선택하면 메뉴·공간 특징을 자연스러운 문장으로 정리합니다. 자동 작성에는 이미지를 포함하지 않으며, 아래에서 추가할 수 있습니다.")
+    st.caption("자동 작성은 상위 주제에 맞춰 실제 매장 소개 또는 예약·주문·이용 팁을 조사합니다. Gemini는 Google 웹 검색으로 자료를 보강합니다. 자동 작성에는 이미지를 포함하지 않으며, 아래에서 추가할 수 있습니다.")
     st.caption("SNS 반응은 공개 뉴스·블로그에 언급된 범위로 수집합니다. 인스타그램·틱톡 내부 게시물 전체를 직접 수집하지 않습니다.")
 
     with st.expander("트렌드 수집 설정", expanded=True):
@@ -71,7 +71,7 @@ def render_weekly_food():
         top = st.number_input("기본 선택 주제 수", min_value=1, max_value=10, value=3, key="weekly_top")
         demo = st.checkbox("가상 자료로 기능 시연", key="weekly_demo")
 
-    auto_places = st.checkbox("맛집 자동 작성: 수집 후 상위 맛집 추가 조사·개별 글·비교 글까지 만들기", value=True, key="weekly_auto_places")
+    auto_places = st.checkbox("정보성 글 자동 작성: 상위 주제 웹 조사·예약·이용 팁까지 작성", value=True, key="weekly_auto_places")
 
     if st.button("1. 이번 주 핫한 주제 찾기", type="primary", key="weekly_run"):
         st.session_state.pop("weekly_report", None)
@@ -93,8 +93,8 @@ def render_weekly_food():
                 st.session_state.weekly_report = copy.deepcopy(report)
                 if auto_places:
                     if writer is None and not demo:
-                        st.info("자연스러운 자동 원고에는 Gemini 또는 Groq를 선택하세요. AI 없이 실행하면 확인된 항목별 원문만 정리합니다.")
-                    indices = [i for i, t in enumerate(report["topics"]) if t["category"] == "맛집"][:int(top)]
+                        st.info("웹 검색과 자동 원고를 함께 사용하려면 검색을 지원하는 Gemini 모델을 선택하세요. Groq는 네이버 검색 키로 자료를 보강할 수 있습니다.")
+                    indices = [i for i, t in enumerate(report["topics"]) if t["category"] in {"맛집", "음식", "디저트", "재료"}][:int(top)]
                     if indices:
                         generated = build_selected_posts(
                             report, indices,
@@ -102,11 +102,11 @@ def render_weekly_food():
                                          "YOUTUBE_API_KEY": youtube_key.strip(), "NAVER_API_MODE": naver_modes[naver_mode]},
                             sources=[source_options[s] for s in selected], writer=writer,
                             limit=int(limit), image_mode="none", progress=current.write,
-                            topic_options={i: {"guide_type": "restaurant"} for i in indices},
+                            topic_options={i: {"guide_type": "information"} for i in indices},
                         )
                         st.session_state.weekly_posts = add_place_roundup(generated)
                     else:
-                        report["warnings"].append("기준을 충족한 맛집 후보가 없습니다. 지역·방송명·맛집 검색어를 추가해 주세요.")
+                        report["warnings"].append("기준을 충족한 주제가 없습니다. 지역·음식·상품 검색어를 구체적으로 입력해 주세요.")
                         st.session_state.weekly_report = copy.deepcopy(report)
                 current.empty()
                 status.update(label="조사 결과 저장됨" if report["topics"] else "결과 부족 · 수집 상태를 확인하세요", state="complete")
@@ -121,6 +121,10 @@ def render_weekly_food():
     if report["demo"]:
         st.warning("가상 자료를 사용한 데모입니다. 실제 맛집·음식 트렌드가 아닙니다. 데모에서는 추가 검색·이미지 API를 호출하지 않습니다.")
     posts = st.session_state.get("weekly_posts", report)
+    for item in posts.get("detail_status", []):
+        if item.get("search_suggestions_html"):
+            import streamlit.components.v1 as components
+            components.html(item["search_suggestions_html"], height=160, scrolling=True)
     cols = st.columns(3)
     cols[0].metric("기간 내 자료", len(report["sources"]))
     cols[1].metric("기준 충족 주제", len(report["topics"]))
@@ -145,7 +149,7 @@ def render_weekly_food():
             key=f"weekly_selected_{stamp}",
         )
         detail_days = st.number_input("추가 조사 기간 (일)", 1, 90, 30, key="weekly_detail_days")
-        st.caption("선택한 글 유형에 맞춰 레시피·계량·공정 또는 지점·영업시간·예약·주차를 다시 조사합니다. 기간은 주간 조사 종료 시점 기준이며, 백과사전 배경 자료의 확인일은 별도로 표시합니다.")
+        st.caption("선택한 글 유형에 맞춰 예약·주문·이용 팁, 실제 매장 정보 또는 레시피를 조사합니다. Gemini의 웹 조사는 추가 조사 기간과 별개로 현재 정보를 검색합니다. 기간은 주간 조사 종료 시점 기준이며, 백과사전 배경 자료의 확인일은 별도로 표시합니다.")
         modes = {"공개 사진 가져오기 (라이선스 확인)": "commons", "AI 이미지 생성": "ai", "이미지 없음": "none"}
         image_mode = st.selectbox("이미지 준비 방식", list(modes), key="weekly_image_mode")
         image_count = st.number_input("주제별 이미지 수", 1, 3, 1, key="weekly_image_count")
@@ -164,11 +168,11 @@ def render_weekly_food():
                 for index in chosen[:10]:
                     name = report["topics"][index]["name"]
                     guide_label = st.selectbox(f"{name} · 포스팅 유형", list(GUIDE_TYPES),
-                                               index=1 if report["topics"][index]["category"] == "맛집" else 0,
+                                               index=0,
                                                key=f"weekly_guide_type_{stamp}_{index}")
-                    reference_url = st.text_input(f"{name} · 기준 레시피/매장 안내 출처 URL (선택)",
+                    reference_url = st.text_input(f"{name} · 예약·이용 안내/기준자료 출처 URL (선택)",
                                                   key=f"weekly_reference_url_{stamp}_{index}")
-                    reference_text = st.text_area(f"{name} · 기준 레시피 또는 매장 안내 원문 (선택)",
+                    reference_text = st.text_area(f"{name} · 예약·이용 안내 또는 기준자료 원문 (선택)",
                                                   key=f"weekly_reference_text_{stamp}_{index}",
                                                   help="검색 요약에 없는 세부 정보는 원문으로 보강하세요. 레시피는 하나의 원문에 분량·계량·과정·온도·시간을 함께 넣으세요. URL만 입력하면 원문을 자동으로 읽지는 않습니다.",
                                                   placeholder="재료: ...\n단계별 만드는 방법: ...\n또는 영업시간: ...\n예약: ...\n주차: ...")

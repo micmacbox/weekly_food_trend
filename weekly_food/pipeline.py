@@ -114,10 +114,12 @@ def source_footer(sources):
     for source in sources:
         published = source.published.astimezone(KST).strftime("%Y-%m-%d")
         if source.date_precision == "retrieved":
-            published = "배경 자료 확인일 " + published + " (게시일 아님)"
+            published = "자료 확인일 " + published + " (게시일 아님)"
         views = f" · 수집 시 누적 {source.views:,}회" if source.kind == "youtube" else ""
         title = source.title.replace("[", "(").replace("]", ")")
         lines.append(f"- [{source.id}] [{title}]({source.url}) · {source.publisher} · {published}{views}")
+        if source.kind == "web_research":
+            lines.append("  Google 검색 근거에 연결된 AI 조사 요약 (웹 원문의 직접 인용 아님)")
         if source.kind == "reference" and "wikipedia.org" in source.url:
             lines.append("  위키백과 기여자 · 배경 발췌/요약 · CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/")
     return "\n".join(lines)
@@ -187,11 +189,16 @@ def create_drafts(report, top=5, writer=None, progress=None):
             except AIError as exc:
                 report["warnings"].append(f"{topic.name}: {exc}")
                 guide = make_guide(topic, sources)
+            if guide["type"] == "information" and not report["demo"]:
+                populated = [values for values in guide["fields"].values() if values]
+                if len(populated) < 2 or sum(map(len, populated)) < 3:
+                    report["warnings"].append(f"{topic.name}: 정보성 글에 필요한 자료가 부족해 빈 원고를 만들지 않았습니다. 웹 검색 키·모델 또는 추가 원문을 확인하세요.")
+                    continue
             title, practical_text = render_guide(topic.name, guide)
             lines = [practical_text, "", source_footer(sources)]
             if report["demo"]:
                 lines.insert(0, "[데모: 가상 자료입니다]")
-            mode = "실용 가이드 초안" if guide["complete"] else "자료 보완이 필요한 실용 가이드"
+            mode = "정보성 블로그 초안" if guide["type"] == "information" else "실용 가이드 초안" if guide["complete"] else "자료 보완이 필요한 실용 가이드"
             report["warnings"].extend(f"{topic.name}: {issue}" for issue in guide["issues"])
         drafts.append({"guide": guide, "topic": topic.name, "title": title, "mode": mode, "category": topic.category,
                        "source_ids": list(topic.source_ids),

@@ -8,7 +8,9 @@ from .core import Evidence, KST, Window, deduplicate, food_related, normalized
 from .media import generated_images, licensed_photos
 from .pipeline import create_drafts
 from .guides import resolve_type, detail_queries
-from .sources import Http, SourceError, collect
+from .sources import Http, SourceError, collect, naver_search
+from .information import research_web
+from .ai import AIError
 
 
 def background_info(topic):
@@ -79,6 +81,31 @@ def build_selected_posts(report, selected, credentials=None, sources=None, write
                 result["detail_status"].append({"topic": name, "source": "wikipedia", "state": "ok", "count": len(background)})
             except SourceError as exc:
                 result["detail_status"].append({"topic": name, "source": "wikipedia", "state": "error", "message": str(exc)})
+        if topic["guide_type"] == "information" and not report["demo"]:
+            if writer is not None and getattr(writer, "provider", None) == "gemini":
+                try:
+                    if progress:
+                        progress(f"웹 검색으로 정보성 글 자료 조사 · {name}")
+                    web, search_status = research_web(writer, search_term)
+                    background.extend(web)
+                    result["detail_status"].append({**search_status, "topic": name})
+                except AIError as exc:
+                    result["warnings"].append(f"{name}: {exc}")
+            else:
+                keys = credentials or {}
+                if keys.get("NAVER_CLIENT_ID") and keys.get("NAVER_CLIENT_SECRET"):
+                    try:
+                        for query in detail_queries(search_term, "information"):
+                            batch = naver_search(Http(), query, None, "blog", keys["NAVER_CLIENT_ID"],
+                                                 keys["NAVER_CLIENT_SECRET"], limit,
+                                                 mode=keys.get("NAVER_API_MODE", "hub"))
+                            background.extend(batch)
+                        result["detail_status"].append({"topic": name, "source": "naver_practical_search",
+                                                       "state": "ok", "count": len(background)})
+                    except SourceError as exc:
+                        result["warnings"].append(f"{name}: {exc}")
+                else:
+                    result["warnings"].append(f"{name}: 심층 웹 조사에는 검색 지원 Gemini 또는 네이버 검색 키를 설정하세요.")
         provided = []
         if config.get("reference_text", "").strip():
             if not config.get("reference_url", "").strip():
@@ -108,7 +135,8 @@ def build_selected_posts(report, selected, credentials=None, sources=None, write
     create_drafts(result, top=len(selected_rows), writer=writer, progress=progress)
     result["topics"] = all_topics
     result["selected_topics"] = selected_rows
-    for index, draft in zip(selected, result["drafts"]):
+    for draft in result["drafts"]:
+        index = next(i for i in selected if report["topics"][i]["name"] == draft["topic"])
         name = draft["topic"]
         if image_mode == "none" or report["demo"]:
             result["detail_status"].append({"topic": name, "source": "images", "state": "skipped",
