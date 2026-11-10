@@ -54,9 +54,14 @@ class Window:
         end = min(datetime.combine(last + timedelta(days=1), time.min, KST), now)
         return cls(start, end)
 
+    @classmethod
+    def last_24_hours(cls, now=None):
+        end = (now or datetime.now(KST)).astimezone(KST)
+        return cls(end - timedelta(hours=24), end)
+
     @property
     def label(self):
-        return f"{self.start:%Y.%m.%d} ~ {self.end - timedelta(microseconds=1):%Y.%m.%d} (한국 시간)"
+        return f"{self.start:%Y.%m.%d %H:%M} ~ {self.end:%Y.%m.%d %H:%M} (한국 시간, 종료 시각 미포함)"
 
     def contains(self, value: datetime) -> bool:
         return value.tzinfo is not None and self.start <= value < self.end

@@ -64,7 +64,7 @@ class DetailTests(unittest.TestCase):
                               "reference", "위키백과", "ko.wikipedia.org", summary="음식 배경 설명입니다.", date_precision="retrieved")
         with patch("weekly_food.detail.collect", return_value=([related, unrelated], [])) as fetch, \
              patch("weekly_food.detail.background_info", return_value=[background]):
-            result = build_selected_posts(self.report, [0], image_mode="none")
+            result = build_selected_posts(self.report, [0], image_mode="none", topic_options={0: {"guide_type": "recipe"}})
         self.assertTrue(any("계량" in q for q in fetch.call_args.args[0]))
         selected = result["selected_topics"][0]
         self.assertIn(related.id, selected["source_ids"])
@@ -79,7 +79,7 @@ class DetailTests(unittest.TestCase):
         with patch("weekly_food.detail.collect", return_value=([], [])), \
              patch("weekly_food.detail.background_info", return_value=[]), \
              patch("weekly_food.detail.licensed_photos", side_effect=SourceError("사진 없음")):
-            result = build_selected_posts(self.report, [0])
+            result = build_selected_posts(self.report, [0], topic_options={0: {"guide_type": "recipe"}})
         self.assertEqual(len(result["drafts"]), 1)
         self.assertEqual(result["images"], [])
         self.assertTrue(any(s["state"] == "error" for s in result["detail_status"]))
@@ -110,7 +110,7 @@ class DetailTests(unittest.TestCase):
         self.assertEqual(fake_http.get.call_args.kwargs["allow_redirects"], False)
 
     def test_export_contains_real_image_bytes_and_attribution_without_base64_json(self):
-        result = build_selected_posts(self.report, [0], image_mode="none")
+        result = build_selected_posts(self.report, [0], image_mode="none", topic_options={0: {"guide_type": "recipe"}})
         result["images"] = [self.asset()]
         files = export_files(result)
         self.assertIn("image_credits.md", files)

@@ -32,7 +32,7 @@ class GuideTests(unittest.TestCase):
         self.assertTrue(guide['fields']['hours'])
         self.assertTrue(guide['fields']['parking'])
         self.assertTrue(guide['fields']['menu'])
-        self.assertIn('[확인 필요]', render_guide('식당', guide)[1])
+        self.assertNotIn('[확인 필요]', render_guide('식당', guide)[1])
 
     def test_no_title_only_or_fake_quote_and_conflicts(self):
         a = self.source('11:00부터 운영합니다.', kind='venue_source')

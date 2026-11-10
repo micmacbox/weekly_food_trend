@@ -1,10 +1,10 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace as NS
 from unittest.mock import Mock
 
 from weekly_food.ai import AIError
-from weekly_food.core import Evidence, KST, Topic
+from weekly_food.core import Evidence, KST, Topic, Window
 from weekly_food.guides import make_guide, render_guide
 from weekly_food.information import grounded_sources
 from weekly_food.pipeline import create_drafts
@@ -49,3 +49,20 @@ class InformationTests(unittest.TestCase):
         create_drafts(report)
         self.assertEqual(report['drafts'], [])
         self.assertTrue(any('빈 원고' in warning for warning in report['warnings']))
+
+
+    def test_last_24_hours_is_rolling_not_calendar_day(self):
+        now = datetime(2026, 11, 11, 15, 30, tzinfo=KST)
+        window = Window.last_24_hours(now)
+        self.assertEqual(window.end - window.start, timedelta(hours=24))
+        self.assertEqual(window.start.hour, 15)
+        self.assertTrue(window.contains(now - timedelta(hours=23)))
+        self.assertFalse(window.contains(now))
+        self.assertFalse(window.contains(now - timedelta(hours=25)))
+
+    def test_all_article_types_omit_missing_field_messages(self):
+        from weekly_food.guides import validate_guide
+        for mode in ('information', 'recipe', 'restaurant'):
+            _, text = render_guide('테스트', validate_guide({'facts': []}, [], mode))
+            self.assertNotIn('[확인 필요]', text)
+            self.assertNotIn('충분한 근거', text)

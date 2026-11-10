@@ -9,7 +9,7 @@ import streamlit as st
 from weekly_food.ai import Writer
 from weekly_food.core import DEFAULT_QUERIES, KST, Window
 from weekly_food.pipeline import draft_text, research, zip_bytes
-from weekly_food.detail import build_selected_posts, add_place_roundup
+from weekly_food.detail import build_selected_posts
 from weekly_food.guides import GUIDE_TYPES
 
 
@@ -24,8 +24,12 @@ def setting(name, default=""):
 
 
 def render_weekly_food():
-    st.subheader("🍽️ 주간 푸드 트렌드 원고 작성기")
-    st.write("① 주간 화제 찾기 → ② 주제 여러 개 선택 → ③ 추가 조사·원고·이미지 만들기")
+    if st.session_state.get("weekly_workflow_version") != 2:
+        for name in ("weekly_report", "weekly_posts"):
+            st.session_state.pop(name, None)
+        st.session_state.weekly_workflow_version = 2
+    st.subheader("🍽️ 24시간 푸드 화제 → 정보성 글 한 편")
+    st.write("① 최근 24시간 화제 조사 → ② 최상위 주제 하나 선정 → ③ 정보성 원고 한 편 작성")
     st.caption("자동 작성은 상위 주제에 맞춰 실제 매장 소개 또는 예약·주문·이용 팁을 조사합니다. Gemini는 Google 웹 검색으로 자료를 보강합니다. 자동 작성에는 이미지를 포함하지 않으며, 아래에서 추가할 수 있습니다.")
     st.caption("SNS 반응은 공개 뉴스·블로그에 언급된 범위로 수집합니다. 인스타그램·틱톡 내부 게시물 전체를 직접 수집하지 않습니다.")
 
@@ -61,19 +65,17 @@ def render_weekly_food():
         focus_text = st.text_area("비교할 음식·가게명 (선택, 한 줄에 하나)", key="weekly_focus",
                                   help="비워두면 AI는 구체적인 이름을 추출하고, AI가 없으면 반복 등장한 음식명 또는 비슷한 제목을 묶습니다. 특정 가게는 지점·지역까지 확인하세요.")
     with right:
-        today = datetime.now(KST).date()
-        end_date = st.date_input("종료일 (한국 시간)", value=today, max_value=today, key="weekly_end")
-        days = st.number_input("기간 (일)", min_value=1, max_value=31, value=7, key="weekly_days")
+        st.caption("실행 시점부터 직전 24시간의 공개 자료로 화제를 비교합니다.")
         source_options = {"공개 뉴스 RSS": "rss", "네이버 뉴스": "news", "네이버 블로그": "blog", "유튜브": "youtube"}
         selected = st.multiselect("수집원", list(source_options), default=list(source_options), key="weekly_sources")
         minimum = st.number_input("최소 자료·발행자 수", min_value=1, max_value=10, value=2, key="weekly_minimum")
         limit = st.number_input("검색어·수집원별 상한", min_value=1, max_value=50, value=20, key="weekly_limit")
-        top = st.number_input("기본 선택 주제 수", min_value=1, max_value=10, value=3, key="weekly_top")
+        top = 1
         demo = st.checkbox("가상 자료로 기능 시연", key="weekly_demo")
 
     auto_places = st.checkbox("정보성 글 자동 작성: 상위 주제 웹 조사·예약·이용 팁까지 작성", value=True, key="weekly_auto_places")
 
-    if st.button("1. 이번 주 핫한 주제 찾기", type="primary", key="weekly_run"):
+    if st.button("1. 최근 24시간 화제 하나로 글 쓰기", type="primary", key="weekly_run"):
         st.session_state.pop("weekly_report", None)
         st.session_state.pop("weekly_posts", None)
         try:
@@ -83,7 +85,7 @@ def render_weekly_food():
             with st.status("주간 화제 수집 중", expanded=True) as status:
                 current = st.empty()
                 report = research(
-                    Window.make(int(days), end_date), [q.strip() for q in query_text.splitlines() if q.strip()],
+                    Window.last_24_hours(), [q.strip() for q in query_text.splitlines() if q.strip()],
                     {"NAVER_CLIENT_ID": naver_id.strip(), "NAVER_CLIENT_SECRET": naver_secret.strip(),
                      "YOUTUBE_API_KEY": youtube_key.strip(), "NAVER_API_MODE": naver_modes[naver_mode]},
                     [source_options[s] for s in selected], int(limit), int(minimum),
@@ -104,7 +106,7 @@ def render_weekly_food():
                             limit=int(limit), image_mode="none", progress=current.write,
                             topic_options={i: {"guide_type": "information"} for i in indices},
                         )
-                        st.session_state.weekly_posts = add_place_roundup(generated)
+                        st.session_state.weekly_posts = generated
                     else:
                         report["warnings"].append("기준을 충족한 주제가 없습니다. 지역·음식·상품 검색어를 구체적으로 입력해 주세요.")
                         st.session_state.weekly_report = copy.deepcopy(report)
@@ -143,10 +145,10 @@ def render_weekly_food():
                       for t in report["topics"]], use_container_width=True)
         stamp = report["generated_at"]
         chosen = st.multiselect(
-            "원고로 만들 주제를 선택하세요 (최대 10개)", list(range(len(report["topics"]))),
+            "원고로 만들 주제 하나를 선택하세요", list(range(len(report["topics"]))),
             default=list(range(min(int(top), len(report["topics"])))),
             format_func=lambda i: f"{i + 1}. {report['topics'][i]['name']} · {report['topics'][i]['score']:.1f}점",
-            key=f"weekly_selected_{stamp}",
+            max_selections=1, key=f"weekly_selected_{stamp}",
         )
         detail_days = st.number_input("추가 조사 기간 (일)", 1, 90, 30, key="weekly_detail_days")
         st.caption("선택한 글 유형에 맞춰 예약·주문·이용 팁, 실제 매장 정보 또는 레시피를 조사합니다. Gemini의 웹 조사는 추가 조사 기간과 별개로 현재 정보를 검색합니다. 기간은 주간 조사 종료 시점 기준이며, 백과사전 배경 자료의 확인일은 별도로 표시합니다.")
@@ -196,7 +198,7 @@ def render_weekly_food():
                         detail_days=int(detail_days), limit=int(limit), image_mode=modes[image_mode], image_count=int(image_count),
                         image_key=image_key, image_model=image_model, topic_options=topic_options, progress=current.write,
                     )
-                    st.session_state.weekly_posts = add_place_roundup(generated)
+                    st.session_state.weekly_posts = generated
                     posts = generated
                     draft_metric.metric("생성 원고", len(posts["drafts"]))
                     current.empty()

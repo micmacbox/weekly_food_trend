@@ -61,7 +61,7 @@ def build_selected_posts(report, selected, credentials=None, sources=None, write
         topic = copy.deepcopy(report["topics"][index])
         name = topic["name"]
         config = options.get(index, {})
-        topic["guide_type"] = resolve_type(topic["category"], config.get("guide_type"))
+        topic["guide_type"] = resolve_type(topic["category"], config.get("guide_type", "information"))
         search_term = config.get("search", name).strip() or name
         if len(search_term) > 150:
             raise ValueError("추가 검색어는 150자 이하로 입력하세요.")

@@ -150,15 +150,13 @@ def render_guide(name, guide):
         if guide["base_source_id"]:
             lines += [f"기준 레시피: [{guide['base_source_id']}]", ""]
     for key, heading in FIELDS[guide["type"]].items():
-        lines.extend(["## " + heading, ""])
         rows = guide["fields"][key]
         if not rows:
-            lines.extend(["[확인 필요] 해당 항목은 충분한 근거를 확보하지 못했어요.", ""])
+            continue
+        lines.extend(["## " + heading, ""])
         for i, row in enumerate(rows, 1):
             prefix = f"{i}. " if key == "steps" else ""
             lines.extend([prefix + row["text"] + f" [{row['source_id']}]", ""])
-    if guide["missing"]:
-        lines += ["## 아직 확인할 정보", "", " · ".join(guide["missing"]), ""]
     return title, "\n".join(lines)
 
 
@@ -182,8 +180,6 @@ def render_place_post(name, guide):
             lines += ["## " + FIELDS["restaurant"][key], ""]
             for row in fields[key]:
                 lines += [row["text"] + f" [{row['source_id']}]", ""]
-    if guide["missing"]:
-        lines += ["## 방문 전 확인할 정보", "", "[확인 필요] " + " · ".join(guide["missing"]), ""]
     lines += ["공개 자료를 바탕으로 정리했어요. 운영 정보는 방문 전 매장 안내를 확인해 주세요."]
     return title, "\n".join(lines)
 
